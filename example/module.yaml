@@ -1,0 +1,8 @@
+product: jvm/lib
+
+apply:
+  - //templates/bcv.module-template.yaml
+
+settings:
+  jvm:
+    release: 17

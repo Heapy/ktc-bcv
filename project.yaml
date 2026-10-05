@@ -1,0 +1,6 @@
+modules:
+  - example
+  - plugins/bcv
+
+plugins:
+  - //plugins/bcv

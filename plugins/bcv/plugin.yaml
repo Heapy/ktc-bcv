@@ -1,0 +1,21 @@
+tasks:
+  apiBuild:
+    action: !dev.ktc.plugins.bcv.buildApi
+      settings: ${pluginSettings}
+      inputJar: ${module.jar}
+      outputFile: ${taskOutputDir}/current.api
+  apiCheck:
+    action: !dev.ktc.plugins.bcv.checkApi
+      moduleName: ${module.name}
+      actualFile: ${tasks.apiBuild.action.outputFile}
+      baselineFile: ${module.rootDir}/${pluginSettings.apiDirectory}/${module.name}.api
+  apiDump:
+    action: !dev.ktc.plugins.bcv.dumpApi
+      actualFile: ${tasks.apiBuild.action.outputFile}
+      baselineFile: ${tasks.apiCheck.action.baselineFile}
+
+checks:
+  - apiCheck
+
+commands:
+  - apiDump

@@ -1,0 +1,19 @@
+product: jvm/amper-plugin
+
+description: Public JVM API baselines with binary-compatibility-validator.
+
+pluginInfo:
+  id: bcv
+  settingsClass: dev.ktc.plugins.bcv.BcvSettings
+
+dependencies:
+  - org.jetbrains.kotlinx:binary-compatibility-validator:0.18.1
+  # BCV 0.18.1's defaults predate Kotlin 2.4 and Java 25 bytecode.
+  - org.jetbrains.kotlin:kotlin-metadata-jvm:2.4.20
+  - org.ow2.asm:asm:9.10.1
+  - org.ow2.asm:asm-tree:9.10.1
+  - io.github.java-diff-utils:java-diff-utils:4.12
+
+settings:
+  jvm:
+    release: 17
