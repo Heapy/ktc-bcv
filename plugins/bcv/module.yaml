@@ -4,7 +4,7 @@ description: Public JVM API baselines with binary-compatibility-validator.
 
 pluginInfo:
   id: bcv
-  settingsClass: dev.ktc.plugins.bcv.BcvSettings
+  settingsClass: io.heapy.ktc.plugins.bcv.BcvSettings
 
 dependencies:
   - org.jetbrains.kotlinx:binary-compatibility-validator:0.18.1

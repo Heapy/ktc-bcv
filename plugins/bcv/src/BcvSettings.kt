@@ -1,4 +1,4 @@
-package dev.ktc.plugins.bcv
+package io.heapy.ktc.plugins.bcv
 
 import org.jetbrains.amper.plugins.Configurable
 

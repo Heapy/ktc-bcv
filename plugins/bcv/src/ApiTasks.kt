@@ -1,4 +1,4 @@
-package dev.ktc.plugins.bcv
+package io.heapy.ktc.plugins.bcv
 
 import com.github.difflib.DiffUtils
 import com.github.difflib.UnifiedDiffUtils

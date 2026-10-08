@@ -1,4 +1,4 @@
-package dev.ktc.plugins.bcv
+package io.heapy.ktc.plugins.bcv
 
 import java.nio.file.Files
 import kotlin.io.path.deleteIfExists
