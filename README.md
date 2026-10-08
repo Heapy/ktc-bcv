@@ -135,7 +135,7 @@ in this repository.
 ```sh
 ./kotlin build
 ./kotlin check
-python3 scripts/integration.py
+kotlinr scripts/integration.main.kts
 ```
 
 The integration script installs the plugin into a temporary consumer under `build/` and verifies
@@ -149,3 +149,11 @@ Upstream references: [BCV API source](https://github.com/Kotlin/binary-compatibi
 [Toolchain plugin API](https://github.com/JetBrains/kotlin-toolchain/tree/v0.13.0/build-sources/binary-compatibility-validator).
 
 Licensed under [Apache-2.0](LICENSE).
+
+## Running verification scripts
+
+The `.main.kts` scripts require JDK 25 and Kotlin 2.4.21+ (`kotlinr` on `PATH`).
+Run them with `kotlinr scripts/<name>.main.kts` from the repository root.
+The Kotlin Toolchain `./kotlin` command is a separate executable. CI installs the script runner
+through `.github/actions/setup-kotlin-script`; the first script run compiles the script and
+resolves any pinned Maven dependencies. Later runs use the local script cache.
