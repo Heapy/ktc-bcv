@@ -1,6 +1,6 @@
 # ktc-bcv
 
-A local Kotlin Toolchain **0.13.0** plugin for reviewing changes to a library's public JVM API.
+A local Kotlin Toolchain **0.13.0** plugin for reviewing changes to a library's public JVM and KLib API.
 Uses the published [binary-compatibility-validator](https://github.com/Kotlin/binary-compatibility-validator/tree/0.18.1)
 API, without invoking Gradle.
 
@@ -61,6 +61,9 @@ plugins:
   bcv:
     enabled: true
     apiDirectory: api
+    klibTargets: []
+    klibIncludeCrossTargets: false
+    klibTimeoutSeconds: 1800
     ignoredPackages: [com.example.internal]
     ignoredClasses: [com.example.GeneratedMetadata]
     nonPublicMarkers: [com.example.InternalApi]
@@ -80,15 +83,55 @@ The `apiBuild` task writes a candidate inside `build/tasks/`. `apiCheck` only re
 its `@Input(inferTaskDependency = false)` prevents automatic scheduling of `apiDump`.
 Missing baselines fail and remain missing. CRLF versus LF differences are ignored.
 
+## KLib snapshots (opt in)
+
+For a KMP library with a JVM target, add `klibTargets` to the same BCV configuration:
+
+```yaml
+plugins:
+  bcv:
+    enabled: true
+    klibTargets: [js, wasmJs, macosArm64, linuxX64, mingwX64]
+```
+
+The default empty list retains JVM-only behavior: KLib tasks skip compilation and leave
+baselines untouched. Nonempty lists opt in. Unknown or duplicate targets fail; only list
+targets declared in the consumer's `product.platforms`.
+
+```sh
+./kotlin check klibApiCheck -m library
+./kotlin do klibApiDump -m library
+```
+
+The KLib baseline is `<module>/<apiDirectory>/<module-name>.klib.api`. Check compares only
+compiled targets and never schedules dump or writes a baseline. Dump replaces only compiled
+targets and preserves all others; it does not infer another platform's ABI. Missing baselines,
+new targets, missing artifacts, empty runs and changed snapshots fail. JVM filtering settings
+apply only to JVM snapshots; KLib snapshots contain the complete ABI.
+
+JS and Wasm-JS run on every host. Native target selection follows the host family: Apple on
+macOS, Linux on Linux, and MinGW on Windows. Supported targets are JS, Wasm-JS, macOS, iOS,
+tvOS, watchOS (except `watchosX64`), Linux and MinGW as provided by KTC 0.13. A host without
+any selected targets fails rather than reporting a vacuous pass. Set `klibIncludeCrossTargets:
+true` only on a host capable of compiling all requested targets.
+
+KTC exposes only JVM artifacts to plugins, so KLib tasks invoke the consumer's wrapper main
+compilation tasks in an isolated build directory. They do not recursively invoke checks or
+link tests. `klibTimeoutSeconds` defaults to 1800. Task names and artifact paths are pinned
+to KTC 0.13; revalidate them and the BCV/compiler version pair when upgrading. KLib candidates
+and compiler logs are retained under the task's output directory.
+
 ## Supported scope and versions
 
 - JVM main compilation through `${module.jar}`: Kotlin and Java libraries.
 - Tested with `jvm/lib`, Kotlin 2.4.20, and JVM release 17 on Kotlin Toolchain 0.13.0.
 - BCV **0.18.1**, Kotlin metadata **2.4.20**, ASM **9.10.1**, java-diff-utils **4.12**.
   Explicit metadata and ASM pins support the Toolchain's newer compiler and bytecode.
-- No Native/KLib, JavaScript, Android variant, Swift, TypeScript, or behavioral API checks.
-  Multiplatform product bindings have not been tested.
-- BCV is in maintenance mode upstream. The adapter deliberately uses its JVM API and does not
+- KMP libraries containing a JVM target: opt-in Native, JS and Wasm-JS KLib snapshots with
+  Kotlin compiler embeddable **2.4.20**. Pure Native/web modules are not supported because
+  the plugin still binds `${module.jar}` for JVM checks.
+- No Android variant, Swift, TypeScript, or behavioral API checks.
+- BCV is in maintenance mode upstream. The adapter uses its JVM and KLib APIs and does not
   depend on the Kotlin Gradle plugin's separate ABI-validation feature.
 
 Local plugins are source modules in this Toolchain release; there is no Maven plugin publication.
@@ -142,7 +185,9 @@ The integration script installs the plugin into a temporary consumer under `buil
 a missing baseline failure, initial dump, unchanged API success, real signature change failure
 without baseline mutation, explicit update, package/class/marker inclusion, and public members inherited
 from a package-private superclass. Unit tests cover missing files, unified diagnostics,
-baseline preservation, and checkout line endings. CI runs these checks on Linux. Keep dependency
+baseline preservation, checkout line endings, host target selection, disabled KLib behavior,
+and preservation of other platforms during a KLib update. The integration script also checks
+JS/Wasm KLib snapshots with a custom baseline directory and a real API change. CI runs these checks on Linux. Keep dependency
 pins reviewed together when updating Kotlin, and run integration tests after every engine upgrade.
 
 Upstream references: [BCV API source](https://github.com/Kotlin/binary-compatibility-validator/blob/0.18.1/src/main/kotlin/api/KotlinSignaturesLoading.kt),

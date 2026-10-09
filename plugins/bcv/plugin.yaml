@@ -14,8 +14,27 @@ tasks:
       actualFile: ${tasks.apiBuild.action.outputFile}
       baselineFile: ${tasks.apiCheck.action.baselineFile}
 
+  klibApiBuild:
+    action: !io.heapy.ktc.plugins.bcv.buildKlibApi
+      projectDir: ${project.rootDir}
+      moduleName: ${module.name}
+      settings: ${pluginSettings}
+      outputDir: ${taskOutputDir}
+  klibApiCheck:
+    action: !io.heapy.ktc.plugins.bcv.checkKlibApi
+      settings: ${pluginSettings}
+      actualFile: ${tasks.klibApiBuild.action.outputDir}/current.klib.api
+      baselineFile: ${module.rootDir}/${pluginSettings.apiDirectory}/${module.name}.klib.api
+  klibApiDump:
+    action: !io.heapy.ktc.plugins.bcv.updateKlibApi
+      settings: ${pluginSettings}
+      actualFile: ${tasks.klibApiBuild.action.outputDir}/current.klib.api
+      baselineFile: ${module.rootDir}/${pluginSettings.apiDirectory}/${module.name}.klib.api
+
 checks:
   - apiCheck
+  - klibApiCheck
 
 commands:
   - apiDump
+  - klibApiDump

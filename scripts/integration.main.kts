@@ -68,6 +68,11 @@ temporary("bcv-integration-") { project ->
     check("example/Greeter" in original && "greet" in original)
     check("implementationDetail" !in original) { "Kotlin internal API leaked into dump" }
     toolchain(project, "check", "apiCheck", "-m", "example")
+    toolchain(project, "check", "klibApiCheck", "-m", "example")
+    toolchain(project, "do", "klibApiDump", "-m", "example")
+    check(!project.resolve("example/api/example.klib.api").exists()) {
+        "JVM-only consumers must not create a KLib baseline"
+    }
     val source = project.resolve("example/src/Greeter.kt")
     source.writeText(source.readText().replace("fun greet(", "fun welcome("))
     toolchain(project, "check", "apiCheck", "-m", "example", succeeds = false, diagnostic = "Public JVM API changed")
@@ -105,4 +110,42 @@ temporary("bcv-integration-") { project ->
     check("inheritedMethod" in baseline.readText()) { "Inclusion lost inherited public members" }
     check("example/Greeter" !in baseline.readText()) { "Class inclusion was ignored" }
 }
-println("BCV integration passed: baselines, real API changes, package/class/marker filters, inherited members.")
+temporary("bcv-klib-integration-") { project ->
+    for (name in listOf("kotlin", "kotlin.bat", "plugins/bcv")) {
+        copy(repo.resolve(name), project.resolve(name))
+    }
+    write(project, "project.yaml", """
+        modules: [library, plugins/bcv]
+        plugins: [//plugins/bcv]
+    """.trimIndent() + "\n")
+    write(project, "library/module.yaml", """
+        product:
+          type: kmp/lib
+          platforms: [jvm, js, wasmJs]
+        plugins:
+          bcv:
+            enabled: true
+            apiDirectory: snapshots
+            klibTargets: [js, wasmJs]
+    """.trimIndent() + "\n")
+    write(project, "library/src/Value.kt", """
+        package example
+        public fun value(): String = "hello"
+    """.trimIndent() + "\n")
+    val baseline = project.resolve("library/snapshots/library.klib.api")
+    toolchain(project, "check", "klibApiCheck", "-m", "library", succeeds = false, diagnostic = "Missing KLib baseline")
+    check(!baseline.exists()) { "Check must not create the KLib baseline" }
+    toolchain(project, "do", "klibApiDump", "-m", "library")
+    val original = baseline.readText()
+    check("// Targets: [js, wasmJs]" in original && "example/value" in original)
+    toolchain(project, "check", "klibApiCheck", "-m", "library")
+    val source = project.resolve("library/src/Value.kt")
+    source.writeText(source.readText().replace("fun value()", "fun changedValue()"))
+    toolchain(project, "check", "klibApiCheck", "-m", "library", succeeds = false, diagnostic = "KLib API changed")
+    check(baseline.readText() == original) { "Check overwrote the KLib baseline" }
+    toolchain(project, "do", "klibApiDump", "-m", "library")
+    check("example/changedValue" in baseline.readText() && baseline.readText() != original)
+    toolchain(project, "check", "klibApiCheck", "-m", "library")
+    check(!project.resolve("library/api/library.klib.api").exists()) { "Ignored apiDirectory" }
+}
+println("BCV integration passed: baselines, real API changes, package/class/marker filters, inherited members, opt-in JS/Wasm KLib checks.")
