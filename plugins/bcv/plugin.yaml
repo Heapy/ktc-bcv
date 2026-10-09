@@ -1,21 +1,47 @@
 tasks:
-  apiBuild:
-    action: !io.heapy.ktc.plugins.bcv.buildApi
-      settings: ${pluginSettings}
-      inputJar: ${module.jar}
-      outputFile: ${taskOutputDir}/current.api
-  apiCheck:
-    action: !io.heapy.ktc.plugins.bcv.checkApi
+  abiPlan:
+    action: !io.heapy.ktc.plugins.bcv.planAbi
+      projectDir: ${project.rootDir}
       moduleName: ${module.name}
-      actualFile: ${tasks.apiBuild.action.outputFile}
+      kotlinVersion: ${module.settings.kotlin.version}
+      settings: ${pluginSettings}
+      outputDir: ${taskOutputDir}
+  apiBuild:
+    action: !io.heapy.ktc.plugins.bcv.buildAbi
+      moduleName: ${module.name}
+      planFile: ${tasks.abiPlan.action.outputDir}/plan.properties
+      settings: ${pluginSettings}
+      jvm: true
+      outputDir: ${taskOutputDir}
+  apiCheck:
+    action: !io.heapy.ktc.plugins.bcv.checkSelectedJvmApi
+      moduleName: ${module.name}
+      buildDir: ${tasks.apiBuild.action.outputDir}
       baselineFile: ${module.rootDir}/${pluginSettings.apiDirectory}/${module.name}.api
   apiDump:
-    action: !io.heapy.ktc.plugins.bcv.dumpApi
-      actualFile: ${tasks.apiBuild.action.outputFile}
+    action: !io.heapy.ktc.plugins.bcv.dumpSelectedJvmApi
+      buildDir: ${tasks.apiBuild.action.outputDir}
       baselineFile: ${tasks.apiCheck.action.baselineFile}
+  klibApiBuild:
+    action: !io.heapy.ktc.plugins.bcv.buildAbi
+      moduleName: ${module.name}
+      planFile: ${tasks.abiPlan.action.outputDir}/plan.properties
+      settings: ${pluginSettings}
+      jvm: false
+      outputDir: ${taskOutputDir}
+  klibApiCheck:
+    action: !io.heapy.ktc.plugins.bcv.checkSelectedKlibApi
+      buildDir: ${tasks.klibApiBuild.action.outputDir}
+      baselineFile: ${module.rootDir}/${pluginSettings.apiDirectory}/${module.name}.klib.api
+  klibApiDump:
+    action: !io.heapy.ktc.plugins.bcv.dumpSelectedKlibApi
+      buildDir: ${tasks.klibApiBuild.action.outputDir}
+      baselineFile: ${tasks.klibApiCheck.action.baselineFile}
 
 checks:
   - apiCheck
+  - klibApiCheck
 
 commands:
   - apiDump
+  - klibApiDump
