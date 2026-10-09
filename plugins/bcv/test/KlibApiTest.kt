@@ -12,10 +12,6 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
 
 class KlibApiTest {
-    private val settings = object : BcvSettings {
-        override val klibTargets = listOf("macosArm64", "linuxX64")
-    }
-
     private fun dump(
         dir: Path,
         name: String,
@@ -39,32 +35,6 @@ class KlibApiTest {
         }
 
     @Test
-    fun disabledKlibLeavesJvmOnlyConsumersAndBaselinesUntouched() {
-        val root = Files.createTempDirectory("bcv-jvm-only-test")
-        try {
-            val defaults = object : BcvSettings {}
-            val output = root.resolve("output")
-            val baseline = root.resolve("baseline.api")
-            baseline.writeText("existing baseline")
-            buildKlibApi(root, "sample", defaults, output)
-            val candidate = output.resolve("current.klib.api")
-            assertEquals("", Files.readString(candidate))
-            checkKlibApi(defaults, candidate, baseline)
-            updateKlibApi(defaults, candidate, baseline)
-            assertEquals("existing baseline", Files.readString(baseline))
-        } finally {
-            root.toFile().deleteRecursively()
-        }
-    }
-
-    @Test
-    fun rejectsUnknownAndDuplicateTargetsBeforeHostFiltering() {
-        assertFailsWith<IllegalArgumentException> { validateKlibTargets(listOf("macosArm46")) }
-        assertFailsWith<IllegalArgumentException> { validateKlibTargets(listOf("js", "js")) }
-        validateKlibTargets(settings.klibTargets)
-    }
-
-    @Test
     fun hostSelectionKeepsWebAndOnlyHostNativeTargets() {
         val targets = listOf("js", "wasmJs", "macosArm64", "iosArm64", "linuxX64", "mingwX64")
         assertEquals(listOf("js", "wasmJs", "macosArm64", "iosArm64"), hostTargets(targets, "Mac OS X"))
@@ -81,16 +51,16 @@ class KlibApiTest {
             val mac = KlibDump.from(macFile.toFile())
             val combined = linux.copy().apply { merge(mac) }
             val baseline = root.resolve("baseline.api").also { it.writeText(render(combined)) }
-            checkKlibApi(settings, macFile, baseline)
+            checkKlibApi(macFile, baseline)
             val before = Files.readString(baseline)
             val changed = dump(root, "changed", "macosArm64", "kotlin/Boolean")
-            assertFailsWith<IllegalStateException> { checkKlibApi(settings, changed, baseline) }
+            assertFailsWith<IllegalStateException> { checkKlibApi(changed, baseline) }
             assertEquals(before, Files.readString(baseline))
-            updateKlibApi(settings, changed, baseline)
+            updateKlibApi(changed, baseline)
             val updated = KlibDump.from(baseline.toFile())
             assertEquals(expectedSubset(combined, linux), expectedSubset(updated, linux))
             assertNotEquals(expectedSubset(combined, mac), expectedSubset(updated, mac))
-            checkKlibApi(settings, changed, baseline)
+            checkKlibApi(changed, baseline)
         } finally {
             root.toFile().deleteRecursively()
         }
@@ -101,7 +71,7 @@ class KlibApiTest {
         val root = Files.createTempDirectory("klib-abi-test")
         try {
             val file = dump(root, "mac", "macosArm64")
-            assertFailsWith<IllegalStateException> { checkKlibApi(settings, file, root.resolve("missing.api")) }
+            assertFailsWith<IllegalStateException> { checkKlibApi(file, root.resolve("missing.api")) }
             val mac = KlibDump.from(file.toFile())
             assertFailsWith<IllegalStateException> { expectedSubset(mac, KlibDump()) }
             val linux = KlibDump.from(dump(root, "linux", "linuxX64").toFile())

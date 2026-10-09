@@ -114,31 +114,65 @@ temporary("bcv-klib-integration-") { project ->
     for (name in listOf("kotlin", "kotlin.bat", "plugins/bcv")) {
         copy(repo.resolve(name), project.resolve(name))
     }
+    val nativeTarget = when {
+        windows -> "mingwX64"
+        System.getProperty("os.name").startsWith("Mac") -> if (System.getProperty("os.arch") == "aarch64") "macosArm64" else "macosX64"
+        else -> if (System.getProperty("os.arch") == "aarch64") "linuxArm64" else "linuxX64"
+    }
     write(project, "project.yaml", """
-        modules: [library, plugins/bcv]
+        modules: [library, web, native, plugins/bcv]
         plugins: [//plugins/bcv]
+    """.trimIndent() + "\n")
+    write(project, "shared.module-template.yaml", """
+        settings:
+          kotlin:
+            version: 2.3.20
+        plugins:
+          bcv:
+            enabled: true
+            apiDirectory: snapshots
     """.trimIndent() + "\n")
     write(project, "library/module.yaml", """
         product:
           type: kmp/lib
           platforms: [jvm, js, wasmJs]
-        plugins:
-          bcv:
-            enabled: true
-            apiDirectory: snapshots
-            klibTargets: [js, wasmJs]
+        apply: [//shared.module-template.yaml]
     """.trimIndent() + "\n")
-    write(project, "library/src/Value.kt", """
-        package example
-        public fun value(): String = "hello"
-    """.trimIndent() + "\n")
+    for ((name, target) in listOf("web" to "js, wasmWasi", "native" to "$nativeTarget, androidNativeArm32, androidNativeArm64, androidNativeX86, androidNativeX64")) {
+        write(project, "$name/module.yaml", """
+            product:
+              type: kmp/lib
+              platforms: [$target]
+            settings:
+              kotlin:
+                version: 2.4.20
+            plugins:
+              bcv: enabled
+        """.trimIndent() + "\n")
+    }
+    for (name in listOf("library", "web", "native")) {
+        write(project, "$name/src/Value.kt", """
+            package example
+            public fun value(): String = "hello"
+        """.trimIndent() + "\n")
+    }
     val baseline = project.resolve("library/snapshots/library.klib.api")
     toolchain(project, "check", "klibApiCheck", "-m", "library", succeeds = false, diagnostic = "Missing KLib baseline")
     check(!baseline.exists()) { "Check must not create the KLib baseline" }
-    toolchain(project, "do", "klibApiDump", "-m", "library")
+    toolchain(project, "do", "apiDump", "-m", "library", diagnostic = "BCV reader Kotlin 2.3.20: jvm")
+    val dumpOutput = toolchain(project, "do", "klibApiDump", "-m", "library", "-m", "web", "-m", "native")
+    check("BCV reader Kotlin 2.3.20:" in dumpOutput && "BCV reader Kotlin 2.4.20:" in dumpOutput) {
+        "Reader versions must follow each module's effective Kotlin version"
+    }
     val original = baseline.readText()
     check("// Targets: [js, wasmJs]" in original && "example/value" in original)
-    toolchain(project, "check", "klibApiCheck", "-m", "library")
+    check("// Targets: [js, wasmWasi]" in project.resolve("web/api/web.klib.api").readText())
+    check("// Targets: [androidNativeArm32, androidNativeArm64, androidNativeX64, androidNativeX86, $nativeTarget]" in project.resolve("native/api/native.klib.api").readText())
+    toolchain(project, "check", "apiCheck", "klibApiCheck", "-m", "library", "-m", "web", "-m", "native")
+    toolchain(project, "do", "apiDump", "-m", "web", "-m", "native")
+    check(!project.resolve("web/api/web.api").exists() && !project.resolve("native/api/native.api").exists()) {
+        "Modules without JVM must not require or create a JVM baseline"
+    }
     val source = project.resolve("library/src/Value.kt")
     source.writeText(source.readText().replace("fun value()", "fun changedValue()"))
     toolchain(project, "check", "klibApiCheck", "-m", "library", succeeds = false, diagnostic = "KLib API changed")
@@ -147,5 +181,20 @@ temporary("bcv-klib-integration-") { project ->
     check("example/changedValue" in baseline.readText() && baseline.readText() != original)
     toolchain(project, "check", "klibApiCheck", "-m", "library")
     check(!project.resolve("library/api/library.klib.api").exists()) { "Ignored apiDirectory" }
+
+    val module = project.resolve("library/module.yaml")
+    val originalModule = module.readText()
+    val jvmBaseline = project.resolve("library/snapshots/library.api")
+    check(jvmBaseline.delete())
+    module.writeText(originalModule + "\nplugins:\n  bcv:\n    excludedTargets: [jvm, wasmJs]\n")
+    toolchain(project, "check", "apiCheck", "klibApiCheck", "-m", "library", diagnostic = "BCV selected: js;")
+    toolchain(project, "do", "apiDump", "-m", "library")
+    check(!jvmBaseline.exists()) { "Excluded JVM target must not write a baseline" }
+    val klibBefore = baseline.readText()
+    module.writeText(originalModule + "\nplugins:\n  bcv:\n    excludedTargets: [js, wasmJs]\n")
+    toolchain(project, "do", "apiDump", "-m", "library")
+    toolchain(project, "check", "apiCheck", "klibApiCheck", "-m", "library", diagnostic = "BCV selected: jvm;")
+    toolchain(project, "do", "klibApiDump", "-m", "library")
+    check(baseline.readText() == klibBefore) { "Excluded KLib targets must preserve their baseline" }
 }
-println("BCV integration passed: baselines, real API changes, package/class/marker filters, inherited members, opt-in JS/Wasm KLib checks.")
+println("BCV integration passed: JVM filters, automatic targets, pure Native/web, exclusions, mixed Kotlin versions, and non-mutating checks.")

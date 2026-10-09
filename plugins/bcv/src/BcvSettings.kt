@@ -2,18 +2,18 @@ package io.heapy.ktc.plugins.bcv
 
 import org.jetbrains.amper.plugins.Configurable
 
-/** Configuration for JVM and optional KLib API snapshots. Package and class names use dotted notation. */
+/** Configuration for JVM and KLib API snapshots. Package and class names use dotted notation. */
 @Configurable
 public interface BcvSettings {
     /** Baselines are stored under this directory, relative to the consumer module. */
     public val apiDirectory: String get() = "api"
 
-    /** Empty disables KLib checks, preserving the existing JVM-only configuration. */
-    public val klibTargets: List<String> get() = emptyList()
+    /** Targets to exclude from automatic discovery, including jvm if desired. */
+    public val excludedTargets: List<String> get() = emptyList()
 
-    /** Compile all selected targets instead of selecting the current host's family. */
-    public val klibIncludeCrossTargets: Boolean get() = false
-    public val klibTimeoutSeconds: Int get() = 1800
+    /** Compile foreign native targets when the current host supports them. */
+    public val includeCrossTargets: Boolean get() = false
+    public val timeoutSeconds: Int get() = 1800
 
     /** The following filters apply only to the JVM snapshot. */
     public val ignoredPackages: List<String> get() = emptyList()
