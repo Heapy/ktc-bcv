@@ -20,14 +20,14 @@ semantic classifier of source or binary compatibility.
 From your consumer project, use the [ktc-plugins installer](https://github.com/Heapy/ktc-plugins):
 
 ```sh
-./ktc-plugins add Heapy/ktc-bcv --branch main --enable-in library
+./ktc-plugins add Heapy/ktc-bcv --tag v0.2.1 --enable-in library
 ```
 
 Replace `library` with your consumer module path. The root [`ktc-plugin.yaml`](ktc-plugin.yaml)
 declares selector `bcv`, module `plugins/bcv`, and `LICENSE`; the installer registers
 and enables the plugin automatically. Commit the generated manifest, lockfile, and vendored
-sources. The lockfile pins the resolved commit; use `--commit <full-40-character-SHA>`
-instead of `--branch main` to select a specific revision. Templates are copied separately.
+sources. The lockfile pins the resolved commit. Use `--branch main` for development snapshots
+or `--commit <full-40-character-SHA>` for a specific revision. Templates are copied separately.
 
 For manual installation:
 
