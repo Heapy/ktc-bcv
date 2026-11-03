@@ -35,7 +35,7 @@ internal fun hostTargets(targets: List<String>, os: String): List<String> = targ
     }
 }
 
-internal fun selectedTargets(declared: List<String>, settings: BcvSettings, os: String): List<String> {
+internal fun selectedTargets(declared: List<String>, settings: BcvSettings, os: String, requested: List<String>? = null): List<String> {
     require(settings.excludedTargets.distinct().size == settings.excludedTargets.size) { "Duplicate bcv.excludedTargets" }
     require((supportedTargets + declared).containsAll(settings.excludedTargets)) {
         "Unknown bcv.excludedTargets: ${settings.excludedTargets - supportedTargets - declared.toSet()}"
@@ -44,7 +44,12 @@ internal fun selectedTargets(declared: List<String>, settings: BcvSettings, os: 
     require(supportedTargets.containsAll(enabled)) {
         "BCV does not support these targets yet: ${enabled - supportedTargets}. Exclude them explicitly if intentional."
     }
-    return if (settings.includeCrossTargets) enabled else hostTargets(enabled, os)
+    val available = if (settings.includeCrossTargets) enabled else hostTargets(enabled, os)
+    if (requested == null) return available
+    require(requested.isNotEmpty() && requested.distinct().size == requested.size) { "BCV targets must be nonempty and unique" }
+    require(supportedTargets.containsAll(requested)) { "Unknown BCV targets: ${requested - supportedTargets}" }
+    require(settings.includeCrossTargets || hostTargets(requested, os) == requested) { "BCV targets unavailable on $os: $requested" }
+    return available.filter { it in requested }
 }
 
 @TaskAction(executionAvoidance = ExecutionAvoidance.Disabled)
@@ -57,9 +62,10 @@ public fun planAbi(
 ) {
     outputDir.createDirectories()
     val model = outputDir.resolve("settings.log")
-    runToolchain(projectDir, listOf("show", "settings", "--build-dir", outputDir.resolve("model").toString(), "-m", moduleName), model, settings.timeoutSeconds)
+    runToolchain(projectDir, listOf("show", "settings", "--build-dir", workspaceDirectory(outputDir).resolve("model").toString(), "-m", moduleName), model, settings.timeoutSeconds)
     val declared = declaredTargets(model.readText())
-    val selected = selectedTargets(declared, settings, System.getProperty("os.name"))
+    val selected = selectedTargets(declared, settings, System.getProperty("os.name"),
+        System.getenv("KTC_BCV_TARGETS")?.split(Regex("[,\\s]+"))?.filter { it.isNotBlank() })
     val unavailable = declared - settings.excludedTargets.toSet() - selected.toSet()
     if (settings.excludedTargets.isNotEmpty()) println("BCV excluded: ${settings.excludedTargets.joinToString()}")
     if (unavailable.isNotEmpty()) println("BCV skipped on this host: ${unavailable.joinToString()}; validate on the corresponding CI host")

@@ -46,14 +46,46 @@ fun command(directory: File, arguments: List<String>, environment: Map<String, S
     } finally { log.delete() }
 }
 
-fun toolchain(project: File, vararg arguments: String, succeeds: Boolean = true, diagnostic: String? = null): String {
+fun toolchain(project: File, vararg arguments: String, succeeds: Boolean = true, diagnostic: String? = null, environment: Map<String, String?> = emptyMap()): String {
     val wrapper = project.resolve(if (windows) "kotlin.bat" else "kotlin").absolutePath
     val invocation = if (windows) listOf("cmd.exe", "/c", wrapper) else listOf("sh", wrapper)
-    val result = command(project, invocation + arguments)
+    val result = command(project, invocation + arguments, environment)
     check((result.exitCode == 0) == succeeds) { "Unexpected exit ${result.exitCode}: ${arguments.toList()}\n${result.output}" }
     check(diagnostic == null || diagnostic in result.output) { "Missing diagnostic $diagnostic:\n${result.output}" }
     println("PASS: ${arguments.joinToString(" ")} (${if (succeeds) "success" else "expected failure"})")
     return result.output
+}
+
+temporary("bcv-shared-integration-") { project ->
+    for (name in listOf("kotlin", "kotlin.bat", "plugins/bcv")) copy(repo.resolve(name), project.resolve(name))
+    write(project, "project.yaml", "modules: [library, consumer, plugins/bcv]\nplugins: [//plugins/bcv]\n")
+    for (name in listOf("library", "consumer")) {
+        write(project, "$name/module.yaml", "product: jvm/lib\nplugins:\n  bcv: enabled\n" +
+            if (name == "consumer") "dependencies: [//library]\n" else "")
+    }
+    write(project, "library/src/Library.kt", "package library\npublic fun value(): String = \"hello\"\n")
+    write(project, "consumer/src/Consumer.kt", "package consumer\npublic fun value(): String = library.value()\n")
+    // The same compiler directory is prepopulated outside the outer build lock.
+    val compilation = project.resolve("precompiled").absolutePath
+    toolchain(project, "task", "--build-dir", compilation, ":library:jarJvm", ":consumer:jarJvm")
+    val environment = mapOf("KTC_BCV_COMPILATION_DIR" to compilation, "KTC_BCV_TARGETS" to "jvm")
+    toolchain(project, "do", "apiDump", "-m", "library", "-m", "consumer", environment = environment)
+    toolchain(project, "check", "apiCheck", "-m", "library", "-m", "consumer", environment = environment)
+    val baseline = project.resolve("library/api/library.api").readText()
+    write(project, "library/src/Added.kt", "package library\npublic fun added(): Int = 42\n")
+    toolchain(project, "check", "apiCheck", "-m", "library", succeeds = false,
+        diagnostic = "Public JVM API changed", environment = environment)
+    check(project.resolve("library/api/library.api").readText() == baseline)
+    check(project.resolve("library/src/Added.kt").delete())
+    toolchain(project, "check", "apiCheck", "-m", "library", environment = environment)
+    // A second outer build can use the precompiled directory, with independent reader requests.
+    toolchain(project, "check", "apiCheck", "--build-dir", project.resolve("second-build").absolutePath,
+        "-m", "consumer", environment = environment)
+    toolchain(project, "check", "apiCheck", "-m", "library", succeeds = false,
+        diagnostic = "nested build lock", environment = environment +
+            ("KTC_BCV_COMPILATION_DIR" to project.resolve("build").absolutePath))
+    toolchain(project, "check", "apiCheck", "-m", "library", diagnostic = "BCV selected: none;",
+        environment = environment + ("KTC_BCV_TARGETS" to "js, wasmJs"))
 }
 
 temporary("bcv-integration-") { project ->

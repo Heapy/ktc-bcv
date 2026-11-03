@@ -25,7 +25,20 @@ internal fun runAbiWorker(
     require(Regex("[0-9]+\\.[0-9]+\\.[0-9]+(?:[-.][A-Za-z0-9]+)*").matches(kotlinVersion)) {
         "Unsupported Kotlin version syntax: $kotlinVersion"
     }
-    val worker = outputDir.resolve("readers/$kotlinVersion").createDirectories()
+    val worker = workspaceDirectory(outputDir).resolve("readers/$kotlinVersion").createDirectories()
+    return withWorkspaceLock(worker, settings.timeoutSeconds) {
+        runLockedAbiWorker(projectDir, outputDir, kotlinVersion, artifacts, settings, worker)
+    }
+}
+
+private fun runLockedAbiWorker(
+    projectDir: Path,
+    outputDir: Path,
+    kotlinVersion: String,
+    artifacts: Map<String, Path>,
+    settings: BcvSettings,
+    worker: Path,
+): Map<String, Path> {
     writeIfChanged(worker.resolve("project.yaml"), "modules: []\n")
     writeIfChanged(worker.resolve("module.yaml"), """
         product: jvm/app
@@ -61,12 +74,12 @@ internal fun runAbiWorker(
         setProperty("publicClasses", settings.publicClasses.joinToString("\n"))
         setProperty("publicMarkers", settings.publicMarkers.joinToString("\n"))
     }
-    val requestFile = worker.resolve("request.properties")
+    val requestFile = outputDir.resolve("request.properties").toAbsolutePath()
     requestFile.outputStream().use { request.store(it, "BCV reader request") }
     runToolchain(projectDir, listOf(
         "run", "--project-dir", worker.toString(), "--build-dir", worker.resolve("build").toString(),
         "--", requestFile.toString(),
-    ), worker.resolve("reader.log"), settings.timeoutSeconds)
+    ), outputDir.resolve("reader.log"), settings.timeoutSeconds)
     println("BCV reader Kotlin $kotlinVersion: ${artifacts.keys.joinToString()}")
     return outputs
 }
