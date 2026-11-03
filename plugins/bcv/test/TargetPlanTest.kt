@@ -8,6 +8,7 @@ import kotlin.io.path.writeText
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotEquals
 
 class TargetPlanTest {
     private fun settings(excluded: List<String> = emptyList(), cross: Boolean = false) = object : BcvSettings {
@@ -77,11 +78,15 @@ class TargetPlanTest {
 
     @Test
     fun modulesShareNestedWorkspaceButDifferentOuterBuildsStayIsolated() {
-        val root = Files.createTempDirectory("bcv-workspace-test")
-        try {
-            assertEquals(workspaceDirectory(root.resolve("build/tasks/_a_apiBuild")), workspaceDirectory(root.resolve("build/tasks/_b_klibApiBuild")))
-            kotlin.test.assertNotEquals(workspaceDirectory(root.resolve("build/tasks/_a")), workspaceDirectory(root.resolve("other/tasks/_a")))
-        } finally { root.toFile().deleteRecursively() }
+        val build = java.nio.file.Path.of("workspace", "build")
+        assertEquals(
+            workspaceDirectory(build.resolve("tasks/_a_apiBuild")),
+            workspaceDirectory(build.resolve("tasks/_b_klibApiBuild")),
+        )
+        assertNotEquals(
+            workspaceDirectory(build.resolve("tasks/_a")),
+            workspaceDirectory(java.nio.file.Path.of("other", "build/tasks/_a")),
+        )
     }
 
     @Test
