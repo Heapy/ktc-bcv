@@ -215,3 +215,23 @@ through [Heapy/setup-main-kts](https://github.com/Heapy/setup-main-kts), pinned 
 commit SHA. The action caches the compiler, Maven dependencies, and compiled scripts between
 eligible CI runs. The first script run compiles the script and resolves any pinned Maven
 dependencies; later runs reuse the script cache.
+
+### Shared compilation in CI
+
+Nested compiler builds share one workspace per outer Toolchain build directory.
+Dependencies are compiled once and reused across modules. Separate outer build
+directories remain isolated; concurrent compiler requests use Toolchain locking.
+
+Set `KTC_BCV_TARGETS` to a comma/whitespace-separated list to partition checks
+across CI hosts without repeating JVM/JS/Wasm on every host. Unknown, duplicate,
+and unavailable host targets fail; module exclusions still apply. Modules that
+do not declare a requested target are skipped. Keep the union of CI partitions
+equal to the project's supported ABI targets.
+
+`KTC_BCV_COMPILATION_DIR` optionally selects an absolute shared compiler output
+directory. A coordinator may precompile all selected module/target tasks there
+before invoking checks. The plugin still runs compiler tasks to validate freshness;
+it never trusts an old artifact merely because it exists. This directory must
+differ from the outer build directory to avoid a nested build lock. ABI readers
+are also compiled once per Kotlin version, with separate requests and results
+for each module.

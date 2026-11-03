@@ -65,6 +65,26 @@ class TargetPlanTest {
     }
 
     @Test
+    fun explicitCiTargetsPartitionHostChecksWithoutChangingExclusions() {
+        val declared = listOf("jvm", "js", "wasmJs", "wasmWasi", "linuxX64", "linuxArm64", "macosArm64")
+        assertEquals(listOf("linuxX64", "linuxArm64"), selectedTargets(declared, settings(), "Linux", listOf("linuxX64", "linuxArm64")))
+        assertEquals(emptyList(), selectedTargets(listOf("jvm"), settings(), "Linux", listOf("wasmWasi")))
+        assertEquals(emptyList(), selectedTargets(declared, settings(listOf("jvm")), "Linux", listOf("jvm")))
+        for (targets in listOf(emptyList(), listOf("jvm", "jvm"), listOf("jmv"), listOf("macosArm64"))) {
+            assertFailsWith<IllegalArgumentException> { selectedTargets(declared, settings(), "Linux", targets) }
+        }
+    }
+
+    @Test
+    fun modulesShareNestedWorkspaceButDifferentOuterBuildsStayIsolated() {
+        val root = Files.createTempDirectory("bcv-workspace-test")
+        try {
+            assertEquals(workspaceDirectory(root.resolve("build/tasks/_a_apiBuild")), workspaceDirectory(root.resolve("build/tasks/_b_klibApiBuild")))
+            kotlin.test.assertNotEquals(workspaceDirectory(root.resolve("build/tasks/_a")), workspaceDirectory(root.resolve("other/tasks/_a")))
+        } finally { root.toFile().deleteRecursively() }
+    }
+
+    @Test
     fun skippedTasksNeverReadOrOverwriteBaselinesOrLaunchCompilation() {
         val root = Files.createTempDirectory("bcv-skipped-test")
         try {

@@ -44,7 +44,7 @@ public fun buildAbi(
         println("BCV ${if (jvm) "JVM" else "KLib"} skipped: no selected targets")
         return
     }
-    val buildDir = outputDir.resolve("compile")
+    val buildDir = compilationDirectory(outputDir)
     runToolchain(projectDir, listOf("task", "--build-dir", buildDir.toString()) +
         targets.map { ":$moduleName:${compilationTask(it)}" }, outputDir.resolve("compile.log"), settings.timeoutSeconds)
     val artifacts = targets.associateWith { target ->
