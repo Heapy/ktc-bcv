@@ -20,7 +20,7 @@ semantic classifier of source or binary compatibility.
 From your consumer project, use the [ktc-plugins installer](https://github.com/Heapy/ktc-plugins):
 
 ```sh
-./ktc-plugins add Heapy/ktc-bcv --tag v0.3.0 --enable-in library
+./ktc-plugins add Heapy/ktc-bcv --tag v0.3.1 --enable-in library
 ```
 
 Replace `library` with your consumer module path. The root [`ktc-plugin.yaml`](ktc-plugin.yaml)
@@ -132,7 +132,12 @@ there is no unconditional `${module.jar}` binding.
 The reader is a generated, isolated KTC project using the consumer's wrapper for dependency
 resolution and execution. Its source is shipped in the plugin's resources. Build outputs, resolved
 settings and compiler/reader logs stay under each task output directory; shared compiler and
-reader projects live under `<outer-build>/bcv-workspace`.
+reader projects live under `<outer-build>/bcv-workspace`. Shared compilation is serialized, and
+each compiled artifact is copied into that task's output before the compilation lock is released.
+Reader builds are serialized per Kotlin version and copied to content-addressed snapshots; reader
+processes then run without the lock, so modules can analyze their own artifacts in parallel.
+`KTC_BCV_TARGETS` and `KTC_BCV_COMPILATION_DIR` are read by each task; blank values are treated as
+unset and the effective overrides are printed in the task log.
 Task names, artifact paths and the `show settings` format are pinned to KTC **0.13.0**; revalidate
 these when upgrading. Unrecognized settings output fails rather than disabling validation.
 
@@ -223,9 +228,11 @@ dependencies; later runs reuse the script cache.
 
 Nested compiler builds share one workspace per outer Toolchain build directory.
 Dependencies are compiled once and reused across modules. Separate outer build
-directories remain isolated; concurrent compiler requests use Toolchain locking. Reader
-project generation and execution use a file lock shared across task classloaders,
-with bounded, interruptible waits.
+directories remain isolated; compiler requests and artifact snapshots use a shared
+BCV file lock in addition to Toolchain locking. Reader project generation and builds
+use a file lock per Kotlin version across task classloaders; analysis runs concurrently
+from immutable JAR snapshots after that lock is released. Lock waits are interruptible,
+and their timeout restarts whenever the lock owner changes.
 
 Set `KTC_BCV_TARGETS` to a comma/whitespace-separated list to partition checks
 across CI hosts without repeating JVM/JS/Wasm on every host. Unknown, duplicate,

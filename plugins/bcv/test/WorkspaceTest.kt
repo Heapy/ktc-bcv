@@ -2,6 +2,9 @@ package io.heapy.ktc.plugins.bcv
 
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.channels.FileChannel
+import java.nio.file.StandardOpenOption.CREATE
+import java.nio.file.StandardOpenOption.WRITE
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -21,8 +24,28 @@ class WorkspaceTest {
         for (path in listOf(root.resolve("build"), root.resolve("build/tasks/.."))) {
             assertFailsWith<IllegalArgumentException> { compilationDirectory(output, path.toString()) }
         }
+        val invalidTail = root.resolve("build/not-created/../compile")
+        assertFailsWith<IllegalArgumentException> { compilationDirectory(output, invalidTail.toString()) }
+        assertFalse(Files.exists(root.resolve("build/not-created")))
         assertEquals(root.toRealPath().resolve("build/bcv-workspace/compile"), compilationDirectory(output, null))
         assertEquals(root.toRealPath().resolve("precompiled"), compilationDirectory(output, root.resolve("precompiled").toString()))
+    }
+
+    @Test
+    fun workspaceDirectoryRejectsUnexpectedToolchainOutputLayout() = temporary { root ->
+        assertFailsWith<IllegalStateException> { workspaceDirectory(root.resolve("build/output/task")) }
+    }
+
+    @Test
+    fun emptyEnvironmentOverridesAreTreatedAsUnset() {
+        assertEquals(
+            BcvEnvironment(null, null),
+            BcvEnvironment.from(mapOf("KTC_BCV_TARGETS" to "  ", "KTC_BCV_COMPILATION_DIR" to "")),
+        )
+        assertEquals(
+            BcvEnvironment(listOf("jvm", "linuxX64"), "/tmp/bcv-compile"),
+            BcvEnvironment.from(mapOf("KTC_BCV_TARGETS" to "jvm, linuxX64", "KTC_BCV_COMPILATION_DIR" to "/tmp/bcv-compile")),
+        )
     }
 
     @Test
@@ -80,6 +103,34 @@ class WorkspaceTest {
             assertFalse(thread.isAlive)
             assertTrue(interrupted.get())
             assertFalse(entered.get())
+        }
+    }
+
+    @Test
+    fun waitingTimeoutRestartsWhenLockOwnerChanges() = temporary { root ->
+        val ownerFile = root.resolve(".bcv.lock.owner")
+        Files.writeString(ownerFile, "first-owner")
+        FileChannel.open(root.resolve(".bcv.lock"), CREATE, WRITE).use { channel ->
+            val heldLock = channel.lock()
+            val executor = Executors.newSingleThreadExecutor()
+            val started = CountDownLatch(1)
+            val entered = CountDownLatch(1)
+            try {
+                val future = executor.submit {
+                    started.countDown()
+                    withWorkspaceLock(root, 1) { entered.countDown() }
+                }
+                assertTrue(started.await(5, TimeUnit.SECONDS))
+                Thread.sleep(650)
+                Files.writeString(ownerFile, "second-owner")
+                Thread.sleep(650)
+                heldLock.release()
+                future.get(5, TimeUnit.SECONDS)
+                assertEquals(0L, entered.count)
+            } finally {
+                if (heldLock.isValid) heldLock.release()
+                executor.shutdownNow()
+            }
         }
     }
 }

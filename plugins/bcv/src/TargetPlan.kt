@@ -64,8 +64,8 @@ public fun planAbi(
     val model = outputDir.resolve("settings.log")
     runToolchain(projectDir, listOf("show", "settings", "--build-dir", workspaceDirectory(outputDir).resolve("model").toString(), "-m", moduleName), model, settings.timeoutSeconds)
     val declared = declaredTargets(model.readText())
-    val selected = selectedTargets(declared, settings, System.getProperty("os.name"),
-        System.getenv("KTC_BCV_TARGETS")?.split(Regex("[,\\s]+"))?.filter { it.isNotBlank() })
+    val environment = BcvEnvironment.from().also { it.log() }
+    val selected = selectedTargets(declared, settings, System.getProperty("os.name"), environment.targets)
     val unavailable = declared - settings.excludedTargets.toSet() - selected.toSet()
     if (settings.excludedTargets.isNotEmpty()) println("BCV excluded: ${settings.excludedTargets.joinToString()}")
     if (unavailable.isNotEmpty()) println("BCV skipped on this host: ${unavailable.joinToString()}; validate on the corresponding CI host")

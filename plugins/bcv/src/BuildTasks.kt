@@ -35,6 +35,7 @@ public fun buildAbi(
 ) {
     val plan = readPlan(planFile)
     val projectDir = Path.of(plan.getProperty("projectDir"))
+    val environment = BcvEnvironment.from().also { it.log() }
     val targets = plan.targets().filter { (it == "jvm") == jvm }
     outputDir.createDirectories()
     val candidate = outputDir.resolve(if (jvm) "current.api" else "current.klib.api")
@@ -44,12 +45,16 @@ public fun buildAbi(
         println("BCV ${if (jvm) "JVM" else "KLib"} skipped: no selected targets")
         return
     }
-    val buildDir = compilationDirectory(outputDir)
-    runToolchain(projectDir, listOf("task", "--build-dir", buildDir.toString()) +
-        targets.map { ":$moduleName:${compilationTask(it)}" }, outputDir.resolve("compile.log"), settings.timeoutSeconds)
-    val artifacts = targets.associateWith { target ->
-        artifactPath(buildDir, moduleName, target).also {
-            check(it.isRegularFile()) { "KTC 0.13 output missing for $target: $it" }
+    val buildDir = compilationDirectory(outputDir, environment.compilationDirectory)
+    val artifactDirectory = outputDir.resolve("artifacts").createDirectories()
+    val artifacts = withWorkspaceLock(buildDir, settings.timeoutSeconds) {
+        runToolchain(projectDir, listOf("task", "--build-dir", buildDir.toString()) +
+            targets.map { ":$moduleName:${compilationTask(it)}" }, outputDir.resolve("compile.log"), settings.timeoutSeconds)
+        targets.associateWith { target ->
+            val compiled = artifactPath(buildDir, moduleName, target)
+            check(compiled.isRegularFile()) { "KTC 0.13 output missing for $target: $compiled" }
+            val extension = if (target == "jvm") "jar" else "klib"
+            compiled.copyTo(artifactDirectory.resolve("$target.$extension"), overwrite = true)
         }
     }
     val outputs = runAbiWorker(projectDir, outputDir, plan.getProperty("kotlinVersion"), artifacts, settings)
