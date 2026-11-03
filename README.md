@@ -20,7 +20,7 @@ semantic classifier of source or binary compatibility.
 From your consumer project, use the [ktc-plugins installer](https://github.com/Heapy/ktc-plugins):
 
 ```sh
-./ktc-plugins add Heapy/ktc-bcv --tag v0.2.1 --enable-in library
+./ktc-plugins add Heapy/ktc-bcv --tag v0.3.0 --enable-in library
 ```
 
 Replace `library` with your consumer module path. The root [`ktc-plugin.yaml`](ktc-plugin.yaml)
@@ -131,7 +131,8 @@ there is no unconditional `${module.jar}` binding.
 
 The reader is a generated, isolated KTC project using the consumer's wrapper for dependency
 resolution and execution. Its source is shipped in the plugin's resources. Build outputs, resolved
-settings, reader configuration and compiler/reader logs stay under the task output directory.
+settings and compiler/reader logs stay under each task output directory; shared compiler and
+reader projects live under `<outer-build>/bcv-workspace`.
 Task names, artifact paths and the `show settings` format are pinned to KTC **0.13.0**; revalidate
 these when upgrading. Unrecognized settings output fails rather than disabling validation.
 
@@ -190,6 +191,8 @@ kotlinr scripts/integration.main.kts
 
 The integration script installs the plugin into temporary consumer projects and verifies:
 
+- shared batched precompilation, multi-module reader requests, source addition/removal invalidation,
+  independent outer build directories, target partitions, and nested-lock rejection;
 - JVM baseline creation, unchanged API, a real API change, and non-mutating failures;
 - package/class/marker filtering and inherited members of a hidden superclass;
 - automatic JVM/JS/Wasm-JS/Wasm-WASI, Android Native and host Native discovery, including pure web/Native modules;
@@ -220,7 +223,9 @@ dependencies; later runs reuse the script cache.
 
 Nested compiler builds share one workspace per outer Toolchain build directory.
 Dependencies are compiled once and reused across modules. Separate outer build
-directories remain isolated; concurrent compiler requests use Toolchain locking.
+directories remain isolated; concurrent compiler requests use Toolchain locking. Reader
+project generation and execution use a file lock shared across task classloaders,
+with bounded, interruptible waits.
 
 Set `KTC_BCV_TARGETS` to a comma/whitespace-separated list to partition checks
 across CI hosts without repeating JVM/JS/Wasm on every host. Unknown, duplicate,
@@ -232,6 +237,7 @@ equal to the project's supported ABI targets.
 directory. A coordinator may precompile all selected module/target tasks there
 before invoking checks. The plugin still runs compiler tasks to validate freshness;
 it never trusts an old artifact merely because it exists. This directory must
-differ from the outer build directory to avoid a nested build lock. ABI readers
+belong to the same consumer project and differ from the outer build directory to
+avoid a nested build lock. Symlink aliases of the outer build directory are rejected. ABI readers
 are also compiled once per Kotlin version, with separate requests and results
 for each module.
